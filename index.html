@@ -1,98 +1,469 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Saarthi - Voice-First UPI Wallet</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      touch-action: manipulation;
-    }
-    .assistant-bubble { animation: fadeIn 0.5s ease-in-out; }
-    @keyframes fadeIn { from {opacity: 0; transform: translateY(10px);} to {opacity: 1; transform: translateY(0);} }
-    .mic-active { animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.4); } 70% { box-shadow: 0 0 0 20px rgba(255,255,255,0); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } }
-    #qr-scanner-container {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8); display: none;
-      justify-content: center; align-items: center; z-index: 100;
-    }
-    #qr-scanner-region { width: 80%; max-width: 400px; background: white; border-radius: 1rem; overflow: hidden; }
-    .option-card { transition: all 0.2s ease-in-out; }
-    .option-card.highlight { transform: scale(1.05); background-color: #4f46e5; color: white; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saarthi - Voice-First UPI Wallet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Moved QR code library script here to ensure it loads before use -->
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Prevent double tap zoom */
+        }
+        .assistant-bubble {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .mic-active {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(255, 255, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+        }
+        #qr-scanner-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #qr-scanner-region {
+            width: 80%;
+            max-width: 400px;
+            background: white;
+            border-radius: 1rem;
+            overflow: hidden; /* Ensure video fits rounded corners */
+        }
+        .option-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .option-card.highlight {
+            transform: scale(1.05);
+            background-color: #4f46e5;
+            color: white;
+        }
+    </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-between min-h-screen p-4 overflow-hidden">
 
-  <header class="w-full max-w-md mx-auto text-center">
-    <h1 class="text-3xl font-bold text-indigo-400">Saarthi</h1>
-    <p class="text-gray-400">Your Voice-Powered Wallet</p>
-  </header>
+    <!-- Header -->
+    <header class="w-full max-w-md mx-auto text-center">
+        <h1 class="text-3xl font-bold text-indigo-400">Saarthi</h1>
+        <p class="text-gray-400">Your Voice-Powered Wallet</p>
+    </header>
 
-  <main id="main-content" class="w-full max-w-md mx-auto flex flex-col items-center justify-center flex-grow space-y-8">
-    <div id="assistant-bubble" class="assistant-bubble bg-indigo-600 p-4 rounded-xl shadow-lg text-center">
-      <p id="assistant-text" class="text-lg font-medium">Welcome to Saarthi! Please say 1, 2, or 3.</p>
+    <!-- Main Content: Conversation & Options -->
+    <main id="main-content" class="w-full max-w-md mx-auto flex flex-col items-center justify-center flex-grow space-y-8">
+        <!-- Assistant Bubble -->
+        <div id="assistant-bubble" class="assistant-bubble bg-indigo-600 p-4 rounded-xl shadow-lg text-center">
+            <p id="assistant-text" class="text-lg font-medium">Welcome to Saarthi! Please say 1, 2, or 3.</p>
+        </div>
+
+        <!-- Options Display -->
+        <div id="options-container" class="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div id="option-qr" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
+                <i class="fas fa-qrcode text-4xl mb-2"></i>
+                <p class="font-semibold">1. QR Code</p>
+            </div>
+            <div id="option-saved" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
+                <i class="fas fa-save text-4xl mb-2"></i>
+                <p class="font-semibold">2. Saved UPI ID</p>
+            </div>
+            <div id="option-new" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
+                <i class="fas fa-plus-circle text-4xl mb-2"></i>
+                <p class="font-semibold">3. New UPI ID</p>
+            </div>
+        </div>
+        
+        <!-- User Input Display -->
+        <div id="user-input-display" class="w-full h-12 bg-gray-800 rounded-lg flex items-center justify-center text-gray-400 italic text-center px-4" style="display: none;">
+             <p id="user-text"></p>
+        </div>
+
+    </main>
+
+    <!-- Microphone Button -->
+    <footer class="w-full max-w-md mx-auto flex flex-col items-center py-4">
+        <button id="mic-btn" class="bg-indigo-600 text-white rounded-full w-20 h-20 flex items-center justify-center shadow-lg transition-transform transform hover:scale-110">
+            <i class="fas fa-microphone text-3xl"></i>
+        </button>
+        <p id="mic-status" class="text-gray-400 mt-2">Tap to Speak</p>
+    </footer>
+    
+    <!-- QR Code Scanner Modal -->
+    <div id="qr-scanner-container">
+        <!-- The library creates the video element, but we need a container for it -->
+        <div id="qr-scanner-region" style="width: 80%; max-width: 400px;"></div>
     </div>
 
-    <div id="options-container" class="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div id="option-qr" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
-        <i class="fas fa-qrcode text-4xl mb-2"></i>
-        <p class="font-semibold">1. QR Code</p>
-      </div>
-      <div id="option-saved" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
-        <i class="fas fa-save text-4xl mb-2"></i>
-        <p class="font-semibold">2. Saved UPI ID</p>
-      </div>
-      <div id="option-new" class="option-card bg-gray-800 p-4 rounded-lg text-center border-2 border-gray-700">
-        <i class="fas fa-plus-circle text-4xl mb-2"></i>
-        <p class="font-semibold">3. New UPI ID</p>
-      </div>
-    </div>
+    <script>
+        // --- DOM Elements ---
+        const micBtn = document.getElementById('mic-btn');
+        const assistantText = document.getElementById('assistant-text');
+        const userText = document.getElementById('user-text');
+        const userInputDisplay = document.getElementById('user-input-display');
+        const micStatus = document.getElementById('mic-status');
+        const optionsContainer = document.getElementById('options-container');
+        const qrScannerContainer = document.getElementById('qr-scanner-container');
+        const qrScannerRegion = document.getElementById('qr-scanner-region');
 
-    <div id="user-input-display" class="w-full h-12 bg-gray-800 rounded-lg flex items-center justify-center text-gray-400 italic text-center px-4" style="display: none;">
-      <p id="user-text"></p>
-    </div>
-  </main>
+        // --- State Management ---
+        let listening = false;
+        let currentStage = 'initial'; // initial, qr-scan, ask-amount, saved-who, new-who, confirm-payment
+        let paymentDetails = {
+            method: null,
+            target: null,
+            amount: null
+        };
+        const savedContacts = {
+            'mummy': 'mummy@upi',
+            'papa': 'papa@upi',
+            'raju': 'raju@upi',
+            'shopkeeper': 'shop@upi'
+        };
+        let lastError = ""; // Store the last speech error
+        let html5QrCode = null; // To hold the scanner instance
 
-  <footer class="w-full max-w-md mx-auto flex flex-col items-center py-4">
-    <button id="mic-btn" class="bg-indigo-600 text-white rounded-full w-20 h-20 flex items-center justify-center shadow-lg transition-transform transform hover:scale-110">
-      <i class="fas fa-microphone text-3xl"></i>
-    </button>
-    <p id="mic-status" class="text-gray-400 mt-2">Tap to Speak</p>
-  </footer>
+        // --- Speech Recognition & Synthesis ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        if(recognition) {
+            recognition.continuous = false;
+            recognition.lang = 'en-IN';
+            recognition.interimResults = false;
+        }
 
-  <div id="qr-scanner-container">
-    <div id="qr-scanner-region" style="width: 80%; max-width: 400px;"></div>
-  </div>
+        const synth = window.speechSynthesis;
 
-  <!-- ✅ Firebase SDKs (for CDN deploy) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-analytics-compat.js"></script>
+        /**
+         * Speaks a text and optionally starts listening afterward.
+         * @param {string} text - The text to speak.
+         * @param {boolean} autoListenAfter - Whether to start listening after speaking.
+         */
+        function speak(text, autoListenAfter = false) {
+            if (listening) {
+                recognition.stop();
+            }
+            if (synth.speaking) {
+                synth.cancel();
+            }
 
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyCZkiWs_SVQnj5ah56XYf5_j8xFs5qdd5I",
-      authDomain: "saarthi-91c04.firebaseapp.com",
-      projectId: "saarthi-91c04",
-      storageBucket: "saarthi-91c04.firebasestorage.app",
-      messagingSenderId: "666512915483",
-      appId: "1:666512915483:web:c1a6fa0bd586f7a8f88cbe",
-      measurementId: "G-6HLDSYZZ38"
-    };
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-IN';
+            utterance.rate = 0.9;
+            
+            utterance.onend = () => {
+                if (autoListenAfter) {
+                    toggleListen(); // Automatically start listening for user's response
+                }
+            };
+            
+            synth.speak(utterance);
+        }
 
-    const app = firebase.initializeApp(firebaseConfig);
-    const analytics = firebase.analytics();
-  </script>
+        // --- App Logic ---
+        function startApp() {
+            const welcomeMessage = "Welcome to Saarthi! How would you like to pay? Please say 1 for QR Code, 2 for Saved UPI, or 3 for New UPI.";
+            assistantText.textContent = "Welcome to Saarthi! Please say 1, 2, or 3.";
+            speak(welcomeMessage, true); // Speak and then auto-listen
+        }
 
-  <!-- Your Saarthi App Script -->
-  <script>
-    // (Paste your full existing Saarthi JS logic here — unchanged)
-  </script>
+        /**
+         * Toggles the microphone on or off.
+         */
+        function toggleListen() {
+            if (!recognition) {
+                micStatus.textContent = "Speech Recognition not supported.";
+                return;
+            }
 
+            if (synth.speaking) {
+                synth.cancel();
+            }
+
+            if (listening) {
+                recognition.stop();
+                return;
+            }
+
+            lastError = ""; 
+            recognition.start();
+        }
+
+        function handleCommand(command) {
+            userInputDisplay.style.display = 'flex';
+            userText.textContent = You said: "${command}";
+
+            switch(currentStage) {
+                case 'initial':
+                    handleInitialChoice(command);
+                    break;
+                case 'qr-scan':
+                    // This stage is handled by the QR scanner library, not voice.
+                    break;
+                case 'ask-amount':
+                    handleAmount(command);
+                    break;
+                case 'saved-who':
+                    handleSavedContact(command);
+                    break;
+                case 'new-who':
+                    handleNewContact(command);
+                    break;
+                case 'confirm-payment':
+                    handleConfirmation(command);
+                    break;
+            }
+        }
+        
+        function highlightOption(optionId) {
+            document.querySelectorAll('.option-card').forEach(card => card.classList.remove('highlight'));
+            if(optionId) {
+                document.getElementById(optionId).classList.add('highlight');
+            }
+        }
+
+        function handleInitialChoice(command) {
+            if (command.includes('1') || command.includes('one')) {
+                paymentDetails.method = 'QR Code';
+                highlightOption('option-qr');
+                const text = "Okay, opening the QR Code scanner. Please point your camera at the code.";
+                assistantText.textContent = text;
+                speak(text); // Don't auto-listen, scanner is the next step
+                startQrScan();
+            } else if (command.includes('2') || command.includes('two')) {
+                paymentDetails.method = 'Saved UPI';
+                highlightOption('option-saved');
+                currentStage = 'saved-who';
+                const text = "Okay. To whom in your saved contacts would you like to pay?";
+                assistantText.textContent = text;
+                speak(text, true); 
+            } else if (command.includes('3') || command.includes('three')) {
+                paymentDetails.method = 'New UPI';
+                highlightOption('option-new');
+                currentStage = 'new-who';
+                const text = "Sure. Please say the full UPI ID you want to pay.";
+                assistantText.textContent = text;
+                speak(text, true); 
+            } else {
+                const text = "Sorry, I didn't get that. Please say 1, 2, or 3.";
+                speak(text, true); 
+            }
+        }
+        
+        function handleSavedContact(command) {
+            const contactName = Object.keys(savedContacts).find(name => command.toLowerCase().includes(name));
+
+            if (contactName) {
+                paymentDetails.target = savedContacts[contactName];
+                currentStage = 'ask-amount';
+                const text = Okay, paying ${contactName}. How much money should I send?;
+                assistantText.textContent = text;
+                speak(text, true); 
+            } else {
+                const text = "I couldn't find that contact. Please say a saved name like Mummy, Papa, or Raju.";
+                assistantText.textContent = text;
+                speak(text, true); 
+            }
+        }
+        
+        const upiRegex = /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}/;
+        function handleNewContact(command) {
+            const cleanedCommand = command.toLowerCase().replace(/\s/g, '').replace('attherate','@').replace('at the rate', '@');
+            if (upiRegex.test(cleanedCommand)) {
+                paymentDetails.target = cleanedCommand;
+                currentStage = 'ask-amount';
+                const text = Got it. Paying ${cleanedCommand}. How much money should I send?;
+                assistantText.textContent = text;
+                speak(text, true); 
+            } else {
+                const text = "That doesn't sound like a valid UPI ID. Please say it again clearly, for example, 'user at upi'.";
+                assistantText.textContent = text;
+                speak(text, true); 
+            }
+        }
+
+
+        function handleAmount(command) {
+            const amountMatch = command.match(/\d+/); 
+            if (amountMatch) {
+                paymentDetails.amount = parseInt(amountMatch[0], 10);
+                currentStage = 'confirm-payment';
+                const text = Got it. I will send ${paymentDetails.amount} rupees to ${paymentDetails.target}. Is that correct? Please say yes to confirm.;
+                assistantText.textContent = text;
+                speak(text, true); 
+            } else {
+                const text = "Sorry, I didn't catch an amount. Please say a number, like '50 rupees'.";
+                assistantText.textContent = text;
+                speak(text, true); 
+            }
+        }
+        
+        function handleConfirmation(command) {
+            if (command.includes('yes') || command.includes('confirm') || command.includes('correct')) {
+                processPayment();
+            } else {
+                const text = "Okay, I've cancelled the transaction. Let's start over.";
+                assistantText.textContent = text;
+                speak(text); 
+                setTimeout(resetApp, 2000); 
+            }
+        }
+        
+        function processPayment() {
+            const text = Sending ${paymentDetails.amount} rupees to ${paymentDetails.target}.;
+            assistantText.textContent = text;
+            speak(text); 
+            
+            setTimeout(() => {
+                const successText = Payment successful!;
+                assistantText.innerHTML = <i class="fas fa-check-circle text-green-400 text-4xl mb-2"></i><br>${successText};
+                speak(successText); 
+                setTimeout(resetApp, 3000); 
+            }, 2000);
+        }
+        
+        // --- THIS IS THE FIXED FUNCTION ---
+        function startQrScan() {
+            qrScannerContainer.style.display = 'flex';
+            
+            if (typeof Html5Qrcode === 'undefined') {
+                const text = "Error: QR Scanner library not loaded.";
+                assistantText.textContent = text;
+                speak(text);
+                qrScannerContainer.style.display = 'none';
+                setTimeout(resetApp, 2000);
+                return;
+            }
+
+            if (!html5QrCode) {
+                 html5QrCode = new Html5Qrcode("qr-scanner-region"); 
+            }
+            
+            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+                if(html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(ignore => {
+                        qrScannerContainer.style.display = 'none';
+                        paymentDetails.target = decodedText;
+                        currentStage = 'ask-amount';
+                        const text = Scan successful. Paying ${decodedText}. How much money should I send?;
+                        assistantText.textContent = text;
+                        speak(text, true); // Speak and then auto-listen
+                    }).catch(err => console.error("Error stopping scanner:", err));
+                }
+            };
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            // --- FIX: First, request camera permissions ---
+            Html5Qrcode.getCameras().then(cameras => {
+                // This then block only runs if permission is GRANTED.
+                if (cameras && cameras.length) {
+                    // We found cameras, now we can start the scanner.
+                    html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
+                        .catch(err => {
+                            // This catch is for if start fails after permission was granted.
+                            console.error("Error starting scanner:", err);
+                            const text = "Error starting scanner. Please try again.";
+                            assistantText.textContent = text;
+                            speak(text);
+                            qrScannerContainer.style.display = 'none';
+                            setTimeout(resetApp, 2000);
+                        });
+                } else {
+                    // This is unlikely, but good to handle.
+                    const text = "No camera was found on this device.";
+                    assistantText.textContent = text;
+                    speak(text);
+                    qrScannerContainer.style.display = 'none';
+                    setTimeout(resetApp, 2000);
+                }
+            }).catch(err => {
+                // This catch block is for if permission is DENIED.
+                // This is the most likely error.
+                console.error("Camera permission error:", err);
+                const text = "Camera permission was denied. Please grant camera permission in your browser settings.";
+                assistantText.textContent = text;
+                speak(text); 
+                qrScannerContainer.style.display = 'none';
+                setTimeout(resetApp, 2000);
+            });
+        }
+        
+        function resetApp() {
+            // FIX: Corrected the syntax error here
+            currentStage = 'initial';
+            paymentDetails = { method: null, target: null, amount: null };
+            highlightOption(null);
+            userInputDisplay.style.display = 'none';
+            userText.textContent = "";
+
+            // Stop scanner if it's running
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.error("Error stopping scanner on reset:", err));
+            }
+            qrScannerContainer.style.display = 'none';
+
+            startApp();
+        }
+
+        // --- Event Listeners ---
+        if(recognition) {
+            recognition.onstart = () => {
+                listening = true;
+                micBtn.classList.add('mic-active');
+                micStatus.textContent = "Listening...";
+            };
+
+            recognition.onend = () => {
+                listening = false;
+                micBtn.classList.remove('mic-active');
+
+                if (lastError && lastError !== 'no-speech') {
+                    micStatus.textContent = "Error. Tap to speak.";
+                } else if (lastError === 'no-speech') {
+                    micStatus.textContent = "I didn't hear you. Tap to speak.";
+                } else {
+                    micStatus.textContent = "Tap to Speak";
+                }
+                lastError = ""; 
+            };
+
+            recognition.onresult = (event) => {
+                lastError = ""; 
+                const command = event.results[0][0].transcript.toLowerCase().trim();
+                handleCommand(command);
+            };
+
+            recognition.onerror = (event) => {
+                lastError = event.error; 
+                if (event.error === 'no-speech') {
+                     console.log("Speech recognition: No speech detected.");
+                } else {
+                    console.error("Speech recognition error:", event.error);
+                }
+            };
+        }
+
+        micBtn.addEventListener('click', toggleListen);
+        
+        window.onload = () => {
+            setTimeout(startApp, 500);
+        };
+
+    </script>
 </body>
 </html>
