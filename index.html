@@ -100,11 +100,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.3/firebase-analytics-compat.js"></script>
 
   <script>
-    /************* Paste your firebaseConfig here (you already gave this earlier) *************/
+    /************* Your web app's Firebase configuration *************/
     const firebaseConfig = {
       apiKey: "AIzaSyCZkiWs_SVQnj5ah56XYf5_j8xFs5qdd5I",
       authDomain: "saarthi-91c04.firebaseapp.com",
-      projectId: "saarthi-91c04",
+      projectId: "saarthi-91c004",
       storageBucket: "saarthi-91c04.firebasestorage.app",
       messagingSenderId: "666512915483",
       appId: "1:666512915483:web:c1a6fa0bd586f7a8f88cbe",
@@ -162,11 +162,18 @@
     /*************** Firebase Auth helpers ***************/
     googleSignInBtn.addEventListener('click', () => {
       const provider = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(provider).catch(err => alert('Sign-in error: ' + err.message));
+      auth.signInWithPopup(provider).catch(err => {
+        console.error('Sign-in error', err.message);
+        // Avoid using alert()
+        speak(`Sign in error: ${err.message}`);
+      });
     });
 
     anonSigninBtn.addEventListener('click', () => {
-      auth.signInAnonymously().catch(err => alert('Anon sign-in error: ' + err.message));
+      auth.signInAnonymously().catch(err => {
+         console.error('Anon sign-in error', err.message);
+         speak(`Anonymous sign in error: ${err.message}`);
+      });
     });
 
     signoutBtn.addEventListener('click', () => auth.signOut());
@@ -174,7 +181,7 @@
     auth.onAuthStateChanged(user => {
       if (user) {
         const isAnon = user.isAnonymous;
-        const display = isAnon ? `Anonymous user (${user.uid})` : (user.displayName || user.email || user.uid);
+        const display = isAnon ? `Anonymous user` : (user.displayName || user.email);
         userInfoEl.textContent = `Signed in: ${display}`;
         googleSignInBtn.classList.add('hidden');
         anonSigninBtn.classList.add('hidden');
@@ -196,11 +203,20 @@
     // User documents located at collection 'users' doc uid
     function userDocRef() {
       const user = auth.currentUser;
-      if (!user) throw new Error('Not signed in');
+      if (!user) {
+        console.error("Attempted to get userDocRef, but user is not signed in.");
+        // We throw an error here because subsequent functions depend on this.
+        // The UI flow should prevent this from being called if not signed in.
+        throw new Error('Not signed in');
+      }
       return db.collection('users').doc(user.uid);
     }
 
     async function loadSavedContacts() {
+      if (!auth.currentUser) {
+         console.log("User not signed in. Cannot load contacts.");
+         return;
+      }
       try {
         const docRef = userDocRef();
         const contactsCol = await docRef.collection('contacts').get();
@@ -211,6 +227,10 @@
         renderContactsPreview();
       } catch (err) {
         console.error('loadSavedContacts error:', err);
+        // This might fail if security rules are not set
+        if (err.code === 'permission-denied') {
+            speak("I couldn't load your contacts. Please make sure you are signed in and the app has permission.");
+        }
       }
     }
 
@@ -226,36 +246,51 @@
     }
 
     async function saveContactToFirestore(name, upi) {
+       if (!auth.currentUser) {
+         speak("You must be signed in to save a contact.");
+         return;
+      }
       try {
         const docRef = userDocRef();
         await docRef.collection('contacts').doc(name.toLowerCase()).set({ upi });
         await loadSavedContacts();
       } catch (err) {
-        console.error('saveContactToFirestore', err);
+        console.error('saveContactToFirestore error', err);
+        speak("I couldn't save the contact. Please try again.");
       }
     }
 
     async function savePaymentToFirestore(payment) {
       // payment: { target, amount, method, timestamp }
+      if (!auth.currentUser) {
+         console.log("User not signed in. Payment will not be recorded.");
+         // We can allow the flow to continue, just won't save.
+         return; 
+      }
       try {
         const docRef = userDocRef();
         const paymentsCol = docRef.collection('payments');
         await paymentsCol.add(payment);
       } catch (err) {
-        console.error('savePaymentToFirestore', err);
+        console.error('savePaymentToFirestore error', err);
+        // Don't interrupt the user flow, just log the error.
       }
     }
 
     /*************** Storage function (example: upload receipt) ***************/
     async function uploadReceiptFile(file) {
+      if (!auth.currentUser) {
+         speak("You must be signed in to upload a file.");
+         throw new Error('Not signed in');
+      }
       try {
         const user = auth.currentUser;
-        if (!user) throw new Error('Not signed in');
         const path = `receipts/${user.uid}/${Date.now()}_${file.name}`;
         const snap = await storage.ref(path).put(file);
         return await snap.ref.getDownloadURL();
       } catch (err) {
         console.error('uploadReceiptFile error', err);
+        speak("There was an error uploading the file.");
         throw err;
       }
     }
@@ -264,15 +299,30 @@
     function startApp() {
       const welcomeMessage = "Welcome to Saarthi! How would you like to pay? Say 1 for QR Code, 2 for Saved UPI, or 3 for New UPI.";
       assistantText.textContent = "Welcome to Saarthi! Please say 1, 2, or 3.";
-      speak(welcomeMessage, true);
+      // Wait for any auth state changes to settle first
+      setTimeout(() => {
+        speak(welcomeMessage, true);
+      }, 500);
     }
 
     function toggleListen() {
-      if (!recognition) { micStatus.textContent = "Speech Recognition not supported."; return; }
+      if (!recognition) { 
+        micStatus.textContent = "Speech Recognition not supported."; 
+        console.error("Speech Recognition not supported in this browser.");
+        return; 
+      }
       if (synth.speaking) synth.cancel();
-      if (listening) { recognition.stop(); return; }
+      if (listening) { 
+        recognition.stop(); 
+        return; 
+      }
       lastError = "";
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("recognition.start() error", e);
+        micStatus.textContent = "Error starting mic.";
+      }
     }
 
     let lastError = '';
@@ -308,6 +358,7 @@
         // Ensure user signed in
         if (!auth.currentUser) {
           speak("Please sign in first to access saved contacts. Use the Sign in button on the top-right.", false);
+          resetAppFlow(); // Reset to initial state
           return;
         }
         currentStage = 'saved-who';
@@ -329,7 +380,7 @@
 
     function handleSavedContact(command) {
       // try to match with cached contacts
-      const lower = command.toLowerCase();
+      const lower = command.toLowerCase().trim();
       let contactName = Object.keys(localSavedContacts).find(n => lower.includes(n));
       if (contactName) {
         paymentDetails.target = localSavedContacts[contactName];
@@ -338,14 +389,14 @@
         assistantText.textContent = text;
         speak(text, true);
       } else {
-        speak("I couldn't find that saved contact. Say the exact saved name or add a new contact using the panel.", true);
+        speak("I couldn't find that saved contact. Say the exact saved name.", true);
       }
     }
 
     const upiRegex = /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}/;
     function handleNewContact(command) {
       // normalize common speech tokens like "at the rate" or "at"
-      const cleaned = command.toLowerCase().replace(/\s+/g, '').replace('attherate', '@').replace('attherate', '@').replace('attherate','@').replace('attherate','@').replace('attherate','@').replace('at the rate','@').replace('attherate','@').replace('at','@');
+      const cleaned = command.toLowerCase().replace(/\s+/g, '').replace(/at the rate|attherate|at/g, '@');
       if (upiRegex.test(cleaned)) {
         paymentDetails.target = cleaned;
         currentStage = 'ask-amount';
@@ -395,9 +446,10 @@
       };
 
       try {
-        if (auth.currentUser) {
-          await savePaymentToFirestore(paymentRecord);
-        }
+        // We save the payment regardless of error, as the user flow should complete.
+        // The save function itself handles the auth check.
+        await savePaymentToFirestore(paymentRecord);
+        
         // On success show UI feedback
         setTimeout(() => {
           const successText = 'Payment recorded successfully!';
@@ -406,20 +458,26 @@
           setTimeout(resetApp, 1800);
         }, 1000);
       } catch (err) {
+        // This catch is mostly for unexpected errors, as savePaymentToFirestore handles its own.
         console.error('processPayment error', err);
         speak('There was an error saving the payment. Try again later.');
         setTimeout(resetApp, 1500);
       }
     }
+    
+    // Resets just the payment flow logic, not the whole page
+    function resetAppFlow() {
+        currentStage = 'initial';
+        paymentDetails = { method: null, target: null, amount: null };
+        highlightOption(null);
+        userInputDisplay.classList.add('hidden');
+        userText.textContent = '';
+        if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop().catch(()=>{});
+        qrScannerContainer.style.display = 'none';
+    }
 
     function resetApp() {
-      currentStage = 'initial';
-      paymentDetails = { method: null, target: null, amount: null };
-      highlightOption(null);
-      userInputDisplay.classList.add('hidden');
-      userText.textContent = '';
-      if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop().catch(()=>{});
-      qrScannerContainer.style.display = 'none';
+      resetAppFlow();
       startApp();
     }
 
@@ -429,20 +487,37 @@
       if (typeof Html5Qrcode === 'undefined') {
         speak('QR Scanner library not loaded.');
         qrScannerContainer.style.display = 'none';
+        resetAppFlow();
         return;
       }
-      if (!html5QrCode) html5QrCode = new Html5Qrcode("qr-scanner-region");
+      if (!html5QrCode) {
+        try {
+            html5QrCode = new Html5Qrcode("qr-scanner-region");
+        } catch (e) {
+            console.error("Could not instantiate Html5Qrcode", e);
+            speak('Error initializing QR scanner.');
+            qrScannerContainer.style.display = 'none';
+            resetAppFlow();
+            return;
+        }
+      }
+      
       const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      
       const qrCodeSuccessCallback = (decodedText) => {
         if (html5QrCode && html5QrCode.isScanning) {
           html5QrCode.stop().then(() => {
             qrScannerContainer.style.display = 'none';
-            paymentDetails.target = decodedText;
+            paymentDetails.target = decodedText; // We assume the decoded text is the UPI ID
             currentStage = 'ask-amount';
-            const text = `Scan successful. Paying ${decodedText}. How much money should I send?`;
+            const text = `Scan successful. How much money should I send?`;
             assistantText.textContent = text;
             speak(text, true);
-          }).catch(err => console.error('stop scanner error', err));
+          }).catch(err => {
+            console.error('stop scanner error', err);
+            qrScannerContainer.style.display = 'none';
+            resetAppFlow();
+          });
         }
       };
 
@@ -453,15 +528,18 @@
               console.error('start scanner error', err);
               speak('Error starting scanner. Please try again.');
               qrScannerContainer.style.display = 'none';
+              resetAppFlow();
             });
         } else {
           speak('No camera found on this device.');
           qrScannerContainer.style.display = 'none';
+          resetAppFlow();
         }
       }).catch(err => {
         console.error('camera permission error', err);
         speak('Camera permission denied or not available. Grant permission in browser settings.');
         qrScannerContainer.style.display = 'none';
+        resetAppFlow();
       });
     }
 
@@ -493,10 +571,13 @@
     refreshContactsBtn.addEventListener('click', loadSavedContacts);
 
     // Auto start
-    window.onload = () => { setTimeout(startApp, 600); };
+    window.onload = () => { 
+        // We let onAuthStateChanged handle the first load
+        // and then startApp is called from there.
+        // Adding a fallback just in case.
+        setTimeout(startApp, 800); 
+    };
 
-    /*************** Helpful note: if you want to programmatically add demo contacts ***************/
-    // Example: call saveContactToFirestore('mummy', 'mummy@upi') after sign-in (for dev)
   </script>
 </body>
 </html>
